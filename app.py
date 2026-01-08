@@ -32,7 +32,8 @@ def _game_metadata() -> List[Tuple[str, GameAssets]]:
 def generate_document(game_name: str, *counts: float):
     games = list_games(BASE_DIR)
     if game_name not in games:
-        raise gr.Error("Selecciona un juego válido antes de generar el documento.")
+        raise gr.Error(
+            "Selecciona un juego válido antes de generar el documento.")
 
     game = games[game_name]
 
@@ -149,4 +150,4 @@ with gr.Blocks(title="Generador de Cartas") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_port=8005, server_name="0.0.0.0")
