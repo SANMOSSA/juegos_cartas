@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
 import gradio as gr
 
@@ -29,16 +29,6 @@ def _game_metadata() -> List[Tuple[str, GameAssets]]:
     return [(name, games[name]) for name in sorted_names]
 
 
-def _slice_mapping(cards_per_game: Dict[str, List[str]]) -> Dict[str, Tuple[int, int]]:
-    mapping: Dict[str, Tuple[int, int]] = {}
-    cursor = 0
-    for game_name, cards in cards_per_game.items():
-        start = cursor
-        cursor += len(cards)
-        mapping[game_name] = (start, cursor)
-    return mapping
-
-
 def generate_document(game_name: str, *counts: float):
     games = list_games(BASE_DIR)
     if game_name not in games:
@@ -59,21 +49,27 @@ def generate_document(game_name: str, *counts: float):
 
 metadata = _game_metadata()
 game_names = [name for name, _ in metadata]
-cards_by_game = {name: [card.name for card in assets.front_cards] for name, assets in metadata}
-card_slices = _slice_mapping(cards_by_game)
 
 
 with gr.Blocks(title="Generador de Cartas") as demo:
     gr.Markdown("# Generador de cartas personalizadas")
 
-    with gr.Row():
-        game_dropdown = gr.Dropdown(
-            label="Selecciona un juego",
-            choices=game_names,
-            value=game_names[0] if game_names else None,
-            interactive=bool(game_names),
-        )
-        reload_button = gr.Button("Recargar", variant="secondary")
+    game_dropdown = gr.Dropdown(
+        label="Selecciona un juego",
+        choices=game_names,
+        value=game_names[0] if game_names else None,
+        interactive=bool(game_names),
+    )
+
+    reload_button = gr.Button("Recargar juegos", variant="secondary")
+    bulk_number = gr.Number(
+        label="Cantidad global",
+        value=0,
+        precision=0,
+        minimum=0,
+        maximum=10,
+        interactive=True,
+    )
 
     form_host = gr.Column()
     generate_button = gr.Button("Generar documento", interactive=False)
@@ -84,7 +80,8 @@ with gr.Blocks(title="Generador de Cartas") as demo:
 
     with form_host:
         for game_name, assets in metadata:
-            with gr.Column(visible=False) as card_form:
+            visible = game_name == game_names[0] if game_names else False
+            with gr.Column(visible=visible) as card_form:
                 form_columns[game_name] = card_form
                 for card in assets.front_cards:
                     gr.Markdown(f"### {card.name}")
@@ -106,19 +103,16 @@ with gr.Blocks(title="Generador de Cartas") as demo:
                         number_inputs.append(number)
 
     if game_names:
-        form_columns[game_names[0]].visible = True
         generate_button.interactive = True
 
     def _on_game_change(selected: str):
-        if selected not in form_columns:
-            updates = [gr.update(visible=False) for _ in form_columns]
-            return (*updates, gr.Button.update(interactive=False), gr.File.update(value=None))
-
         updates = []
         for name in form_columns:
             updates.append(gr.update(visible=(name == selected)))
 
-        return (*updates, gr.Button.update(interactive=True), gr.File.update(value=None))
+        button_update = gr.Button.update(interactive=selected in form_columns)
+        file_update = gr.File.update(value=None)
+        return (*updates, button_update, file_update)
 
     game_dropdown.change(
         _on_game_change,
@@ -141,6 +135,17 @@ with gr.Blocks(title="Generador de Cartas") as demo:
         inputs=[game_dropdown, *number_inputs],
         outputs=output_file,
     )
+
+    if number_inputs:
+        def _apply_global_quantity(value: float):
+            clamped = max(0, min(10, int(value)))
+            return tuple(gr.update(value=clamped) for _ in number_inputs)
+
+        bulk_number.change(
+            _apply_global_quantity,
+            inputs=bulk_number,
+            outputs=number_inputs,
+        )
 
 
 if __name__ == "__main__":
